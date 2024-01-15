@@ -1,0 +1,341 @@
+#一、相關性檢驗
+#1.大盤指數：道瓊、SP500、納斯達克
+import yfinance as yf
+import pandas as pd
+from scipy.stats import pearsonr
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+
+# 設定日期區間
+start_date = "2013-01-01"
+end_date = "2022-12-31"
+
+# 定義股票代碼
+tickers = [
+    "^DJI", "^GSPC", "^IXIC" , "^TWII"
+]
+
+# 建立一個空的DataFrame用於儲存數據
+data = pd.DataFrame(index=pd.date_range(start=start_date, end=end_date, freq='D'))
+
+# 獲取每個股票的歷史價格數據
+for ticker in tickers:
+    stock_data = yf.download(ticker, start=start_date, end=end_date)
+    data[ticker] = stock_data['Adj Close']
+
+# 刪除包含NaN值的行
+data = data.dropna()
+
+# 定義相關性分析的函數
+def correlation_analysis(data, target_col):
+    correlations = {}
+    for col in data.columns:
+        if col != target_col:
+            correlation, _ = pearsonr(data[col], data[target_col])
+            correlations[col] = correlation
+    return correlations
+
+# TWII作為對象2
+target_col = "^TWII"
+
+# 印出每個對象1和對象2的相關性
+for ticker in tickers:
+    if ticker != target_col:
+        data_subset = data[[target_col, ticker]]
+        correlations = correlation_analysis(data_subset, target_col)
+        print(f"相關性分析: {ticker} vs {target_col}")
+        for col, correlation in correlations.items():
+            print(f"{col}: {correlation:.4f}")
+        print("\n" + "="*50 + "\n")
+
+
+# 可視化相關性熱力圖
+plt.figure(figsize=(10, 8))
+sns.heatmap(data.corr(), annot=True, cmap="coolwarm", linewidths=.5, fmt=".2f")
+plt.title("Corelation between Stock Index and TWII")
+plt.show()
+
+
+
+
+#2.國際經濟數據:南韓 KOSPI 指數、澳大利亞 ASX 200 指數、巴西 Bovespa 指數、歐洲 Stoxx 50 指數、加拿大 S&P/TSX 指數
+
+# 設定日期區間
+start_date = "2013-01-01"
+end_date = "2022-12-31"
+
+# 定義股票代碼
+tickers = [
+    "^KS11", "^GSPTSE", "^AXJO", "^BVSP", "^STOXX50E","^TWII"
+]
+
+# 建立一個空的DataFrame用於儲存數據
+data = pd.DataFrame(index=pd.date_range(start=start_date, end=end_date, freq='D'))
+
+# 獲取每個股票的歷史價格數據
+for ticker in tickers:
+    stock_data = yf.download(ticker, start=start_date, end=end_date)
+    data[ticker] = stock_data['Adj Close']
+
+# 刪除包含NaN值的行
+data = data.dropna()
+
+# 定義相關性分析的函數
+def correlation_analysis(data, target_col):
+    correlations = {}
+    for col in data.columns:
+        if col != target_col:
+            correlation, _ = pearsonr(data[col], data[target_col])
+            correlations[col] = correlation
+    return correlations
+
+# TWII作為對象2
+target_col = "^TWII"
+
+# 印出每個對象1和對象2的相關性
+for ticker in tickers:
+    if ticker != target_col:
+        data_subset = data[[target_col, ticker]]
+        correlations = correlation_analysis(data_subset, target_col)
+        print(f"相關性分析: {ticker} vs {target_col}")
+        for col, correlation in correlations.items():
+            print(f"{col}: {correlation:.4f}")
+        print("\n" + "="*50 + "\n")
+
+
+# 可視化相關性熱力圖
+plt.figure(figsize=(10, 8))
+sns.heatmap(data.corr(), annot=True, cmap="coolwarm", linewidths=.5, fmt=".2f")
+plt.title("Corelation between Stock Index and TWII")
+plt.show()
+
+#3.國內經濟數據:臺灣5大銀行基準利率、臺灣 GDP、臺灣消費者物價指數、臺灣工業生產指數、臺灣製造業採購經理人指數、臺灣失業率
+import pandas as pd
+import yfinance as yf
+import seaborn as sns
+import matplotlib.pyplot as plt
+from scipy.stats import pearsonr
+
+# 定義要獲取的股票代碼
+ticker = "^TWII"
+
+# 獲取股票數據
+stock_data = yf.download(ticker, start="2018-11-01", end="2023-10-01")
+df_twii = stock_data.resample('M').mean()
+
+# 讀取其他相關數據的CSV文件
+df_other_data = pd.read_csv('sample_data/input_data.csv')
+
+# 將 'time' 欄位轉換為日期格式
+df_other_data['time'] = pd.to_datetime(df_other_data['time'])
+
+# 將 'time' 設為索引
+df_other_data.set_index('time', inplace=True)
+
+# 將其他數據的時間單位設置為月
+df_other_monthly = df_other_data.resample('M').mean()
+
+# 選擇相關性分析的時間範圍
+start_date = '2018-11-01'
+end_date = '2023-10-01'
+df_selected = df_other_monthly.loc[start_date:end_date]
+
+# 合併 TWII 數據和其他相關數據
+df_monthly = pd.concat([df_selected, df_twii['Close']], axis=1)
+df_monthly.rename(columns={'Close': 'TWII'}, inplace=True)
+
+# 計算相關性
+correlation_matrix = df_monthly.corr()
+
+# 繪製相關性熱圖
+plt.figure(figsize=(12, 10))
+sns.heatmap(correlation_matrix, annot=True, cmap="coolwarm", linewidths=.5, fmt=".2f")
+plt.title("domestic corelation")
+plt.show()
+
+#二、將挑選的input data投入univariate time-series analysis 做3年的訓練和1年的測試
+import pandas as pd
+import yfinance as yf
+from sklearn.preprocessing import MinMaxScaler
+from numpy import array
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense,Dropout
+from tensorflow.keras.utils import plot_model
+from IPython.display import Image
+from keras.losses import Huber
+
+
+# 定義股票代碼
+stock_tickers = ["^TWII","^DJI", "^GSPC", "^IXIC", "^KS11", "^GSPTSE", "^AXJO"]
+
+# 定義需要手動輸入的CSV文件
+csv_file_path = "sample_data/input_data.csv"  # 替換成你的 CSV 文件路徑
+
+# 匯入大盤指標數據
+stock_data = yf.download(stock_tickers, start="2018-11-01", end="2023-11-1")['Adj Close']
+
+# 重新取樣為每月數據
+stock_data = stock_data.resample('M').last()
+
+# 匯入手動輸入的CSV文件
+manual_data = pd.read_csv(csv_file_path, parse_dates=['time'], index_col='time')
+
+# 合併數據
+df = pd.concat([stock_data, manual_data[['cpi2', 'gdp']]], axis=1)
+
+
+
+# 刪除包含 NaN 值的行
+df = df.dropna()
+
+# 將 ^TWII 移到最後一列
+df = df.drop('^TWII', axis=1).join(df['^TWII'])
+
+df['pred_TWII'] = df['^TWII'].shift(-12)
+
+
+import numpy as np
+# Assuming df is your DataFrame with the relevant data and has a time index
+# Separate the data into training (2018-2020) and test (2021) sets
+train_data = df[df.index.year <= 2020]
+test_data = df[df.index.year == 2021]
+
+test_data_2022 = df[df.index.year == 2022]
+test_data_2022 = df.dropna()
+
+# Extract the relevant columns
+train_twii = train_data['^TWII'].values
+test_twii = test_data['^TWII'].values
+test_twii_2022 = test_data_2022['^TWII'].values
+
+df = df.drop('^TWII', axis=1)
+def split_sequence(data, n_steps):
+    X, y = [], []
+    for i in range(len(data)):
+        # find the end of this pattern
+        end_ix = i + n_steps
+        # check if we are beyond the sequence
+        if end_ix > len(data) - 1:
+            pass
+        # gather input and output parts of the pattern
+        seq_x, seq_y = data.iloc[i][0:8].values, data.iloc[i][8]
+        X.append(seq_x)
+        y.append(seq_y)
+    return np.array(X), np.array(y)
+
+# Define time steps
+n_steps = 1
+
+# Split into samples for training data
+X_train, y_train = split_sequence(train_data, n_steps)
+
+
+
+model = Sequential()
+model.add(Dense(100, activation='relu', input_dim=X_train.shape[1]))
+model.add(Dense(75, activation='relu'))
+model.add(Dropout(0.5))  # Add dropout if needed
+model.add(Dense(1))  # Assuming you have a regression task
+model.compile(optimizer='adam', loss='huber')
+
+
+# Fit the model
+history = model.fit(X_train, y_train, epochs=2000, verbose=0)
+
+# Plot training loss
+plt.plot(history.history['loss'])
+plt.title('Model Training Loss')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.show()
+
+# Function to plot the fitting curve
+def plot_fitting_curve(model, X, y):
+    # Make predictions on the training data
+    y_pred = model.predict(X)
+
+    # Plot the actual vs predicted values
+    plt.figure(figsize=(10, 6))
+    plt.plot(y, label='Actual', marker='o')
+    plt.plot(y_pred, label='Predicted', marker='o')
+    plt.title('Fitting Curve of the Model')
+    plt.xlabel('months')
+    plt.ylabel('TWII Value')
+    plt.legend()
+    plt.show()
+
+# Plot the fitting curve without using MinMaxScaler
+
+plot_fitting_curve(model, X_train, y_train)
+
+from sklearn.metrics import mean_absolute_error
+
+
+# Split into samples for test data
+X_test, y_test = split_sequence(test_data, n_steps)
+
+
+y_pred = model.predict(X_test, verbose=0)
+
+# Calculate the absolute errors for 2021
+errors_2021 = abs(y_pred - y_test)
+
+# Calculate the mean absolute error for 2021
+mae_2021 = mean_absolute_error(y_test, y_pred)
+print(f"Mean Absolute Error for 2022: {mae_2021}")
+
+# Calculate the percentage error for 2021
+percentage_error_2021 = (errors_2021 / y_test) * 100
+mean_percentage_error_2021 = np.mean(percentage_error_2021)
+print(f"Mean Percentage Error for 2022: {mean_percentage_error_2021}%")
+
+#2023年預測與誤差分析
+
+X_test_2022, y_test_2022 = split_sequence(test_data_2022, n_steps)
+
+y_pred_2022 = model.predict(X_test_2022, verbose=0)
+
+
+# Calculate the absolute errors for 2023
+errors_2022 = abs(y_pred_2022 - y_test_2022)
+
+# Calculate the mean absolute error for 2022
+mae_2022 = mean_absolute_error(y_test_2022, y_pred_2022)
+print(f"Mean Absolute Error for 2023: {mae_2022}")
+
+# Calculate the percentage error for 2023
+percentage_error_2022 = (errors_2022 / y_test_2022) * 100
+mean_percentage_error_2022 = np.mean(percentage_error_2022)
+print(f"Mean Percentage Error for 2023: {mean_percentage_error_2022}%")
+
+# Function to plot the fitting curve for 2023
+def plot_fitting_curve_2022(model, X, y):
+    # Make predictions on the test data
+    y_pred = model.predict(X)
+
+    # Plot the actual vs predicted values
+    plt.figure(figsize=(10, 6))
+    plt.plot(y, label='Actual', marker='o')
+    plt.plot(y_pred, label='Predicted', marker='o')
+    plt.title('Fitting Curve of the Model for 2023')
+    plt.xlabel('months')
+    plt.ylabel('TWII Value')
+    plt.legend()
+    plt.show()
+
+# Plot the fitting curve for 2022
+plot_fitting_curve_2022(model, X_test_2022, y_test_2022)
+
+#預測未來一年的TWII指數
+predict_data = df[df.index.year == 2023]
+X_predict, y_predict = split_sequence(predict_data, n_steps)
+y_hat = model.predict(X_predict, verbose=0)
+
+
+plt.figure(figsize=(10, 6))
+plt.plot(y_hat, label='prediction', marker='o')
+plt.title('prediction of TWII for 2024')
+plt.xlabel('months')
+plt.ylabel('TWII Value')
+plt.show()
