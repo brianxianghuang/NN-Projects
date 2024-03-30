@@ -1,0 +1,226 @@
+#U-net CNN structure
+
+
+import os
+import numpy as np
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, concatenate, Conv2DTranspose, UpSampling2D, Dropout
+
+# 設定圖片大小
+img_size = (128, 128, 1)
+
+def unet_model():
+    input_img = Input(shape=img_size, name='input_image')
+    input_ref_holo = Input(shape=img_size, name='input_ref_holo')
+    input_ref_holo2 = Input(shape=img_size, name='input_ref_holo2')
+
+    # Concatenate input_img and input_ref_holo at the beginning
+    x = concatenate([input_img, input_ref_holo, input_ref_holo2], axis=-1)
+    x0 = x
+
+    # Encoder
+    x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+    x = MaxPooling2D((2, 2), padding='same')(x)
+    x = Dropout(0.25)(x)
+    x1 = x
+    x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+    x = MaxPooling2D((2, 2), padding='same')(x)
+    x = Dropout(0.25)(x)
+    x2 = x
+    x = Conv2D(256, (3, 3), activation='relu', padding='same')(x)
+    x = MaxPooling2D((2, 2), padding='same')(x)
+    x = Dropout(0.25)(x)
+    x3 = x
+    x = Conv2D(512, (3, 3), activation='relu', padding='same')(x)
+    x = MaxPooling2D((2, 2), padding='same')(x)
+    x = Dropout(0.25)(x)
+    x4 = x
+
+    x = Conv2D(1024, (3, 3), activation='relu', padding='same')(x)
+    x = MaxPooling2D((2, 2), padding='same')(x)
+    x = Dropout(0.25)(x)
+    x5 = x
+
+    x = Conv2D(2048, (3, 3), activation='relu', padding='same')(x)
+    x = MaxPooling2D((2, 2), padding='same')(x)
+    x = Dropout(0.25)(x)
+    x6 = x
+
+    x = Conv2D(2048, (3, 3), activation='relu', padding='same')(x)
+    x = MaxPooling2D((2, 2), padding='same')(x)
+    x = Dropout(0.25)(x)
+    # Decoder
+    x = Conv2DTranspose(2048, (3, 3), activation='relu', padding='same')(x)
+    x = UpSampling2D((2, 2))(x)  # UpSampling to 32x32
+    x = concatenate([x, x6], axis=-1)
+
+    x = Conv2DTranspose(1024, (3, 3), activation='relu', padding='same')(x)
+    x = UpSampling2D((2, 2))(x)  # UpSampling to 64x64
+    x = concatenate([x, x5], axis=-1)
+
+    x = Conv2DTranspose(512, (3, 3), activation='relu', padding='same')(x)
+    x = UpSampling2D((2, 2))(x)  # UpSampling to 64x64
+    x = concatenate([x, x4], axis=-1)
+
+    x = Conv2DTranspose(256, (3, 3), activation='relu', padding='same')(x)
+    x = UpSampling2D((2, 2))(x)  # UpSampling to 64x64
+    x = concatenate([x, x3], axis=-1)
+
+    x = Conv2DTranspose(128, (3, 3), activation='relu', padding='same')(x)
+    x = UpSampling2D((2, 2))(x)  # UpSampling to 64x64
+    x = concatenate([x, x2], axis=-1)
+
+
+    x = Conv2DTranspose(64, (3, 3), activation='relu', padding='same')(x)
+    x = UpSampling2D((2, 2))(x)  # UpSampling to 64x64
+    x = concatenate([x, x1], axis=-1)
+
+    x = Conv2DTranspose(1, (3, 3), activation='sigmoid', padding='same')(x)
+    x = UpSampling2D((2, 2))(x)  # UpSampling to 128x128
+
+
+    # Final Convolutional layer
+    decoded = Conv2DTranspose(1, (3, 3), activation='sigmoid', padding='same', name='output')(x)
+
+    model = Model(inputs=[input_img, input_ref_holo, input_ref_holo2], outputs=decoded, name='unet_model')
+    return model
+
+
+
+
+
+#load picture data ana train model
+
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.preprocessing.image import load_img, img_to_array
+from tensorflow.keras.utils import Sequence
+from tensorflow.keras.callbacks import ModelCheckpoint
+import matplotlib.pyplot as plt
+from tensorflow.keras.optimizers import Adam ,SGD
+from tensorflow.keras.losses import MeanSquaredError
+from keras.callbacks import EarlyStopping
+
+
+# 設定資料路徑
+data_folder = 'drive/MyDrive/訓練資料生成Code/1P'
+input_folder = os.path.join(data_folder, 'input')
+output_folder = os.path.join(data_folder, 'output')
+ref_holo_path = 'drive/MyDrive/訓練資料生成Code/reference.png'
+ref_holo_path2 = 'drive/MyDrive/訓練資料生成Code/reference2.png'
+
+# 取得所有檔案 ID
+all_files = os.listdir(input_folder)
+all_files = [file for file in all_files if file.endswith('.png')]
+
+# 切分訓練和測試資料
+train_files, test_files = train_test_split(all_files, test_size=0.1, random_state=42)
+
+# 定義資料生成器
+class DataGenerator(Sequence):
+    def __init__(self, input_folder, ref_holo_path, ref_holo_path2, output_folder, files, batch_size=8):
+        self.input_folder = input_folder
+        self.ref_holo_path = ref_holo_path
+        self.ref_holo_path2 = ref_holo_path2
+        self.output_folder = output_folder
+        self.batch_size = batch_size
+        self.files = files
+        self.indexes = np.arange(len(self.files))
+
+    def __len__(self):
+     return int(np.ceil(len(self.files) / self.batch_size)) if len(self.files) > 0 else 1
+
+    def __getitem__(self, index):
+        start = index * self.batch_size
+        end = (index + 1) * self.batch_size
+        batch_files = self.files[start:end]
+
+        X = np.zeros((len(batch_files), *img_size), dtype=np.float32)
+        X_ref_holo = np.zeros((len(batch_files), *img_size), dtype=np.float32)
+        X_ref_holo2 = np.zeros((len(batch_files), *img_size), dtype=np.float32)
+        y = np.zeros((len(batch_files), *img_size), dtype=np.float32)
+
+        for i, file in enumerate(batch_files):
+            img_path = os.path.join(self.input_folder, file)
+            ref_holo_path = self.ref_holo_path
+            ref_holo_path2 = self.ref_holo_path2
+            output_path = os.path.join(self.output_folder, 'Hologram_' + file)
+
+            # Load and preprocess input image
+            img = load_img(img_path, color_mode='grayscale', target_size=img_size[:-1])
+            X[i] = img_to_array(img) / 255.0
+
+            # Load and preprocess reference hologram
+            ref_holo = load_img(ref_holo_path, color_mode='grayscale', target_size=img_size[:-1])
+            X_ref_holo[i] = img_to_array(ref_holo) / 255.0
+
+            # Load and preprocess reference2 hologram
+            ref_holo2 = load_img(ref_holo_path2, color_mode='grayscale', target_size=img_size[:-1])
+            X_ref_holo2[i] = img_to_array(ref_holo) / 255.0
+
+            # Load and preprocess output image (true hologram)
+            true_holo = load_img(output_path, color_mode='grayscale', target_size=img_size[:-1])
+            y[i] = img_to_array(true_holo) / 255.0
+
+        return {'input_image': X, 'input_ref_holo': X_ref_holo, 'input_ref_holo2': X_ref_holo2}, {'output': y}
+
+    def on_epoch_end(self):
+        np.random.shuffle(self.indexes)
+
+# 建立訓練資料和測試資料生成器
+train_generator = DataGenerator(input_folder, ref_holo_path, ref_holo_path2, output_folder, train_files)
+test_generator = DataGenerator(input_folder, ref_holo_path, ref_holo_path2, output_folder, test_files)
+
+# 建立模型
+model = unet_model()
+
+# 編譯模型
+model.compile(optimizer=Adam(learning_rate=0.001), loss={'output': MeanSquaredError()})
+
+early_stopping = EarlyStopping(monitor='loss', min_delta=0.00005, patience=50, restore_best_weights=True)
+
+
+# 訓練模型
+history = model.fit(train_generator, epochs=3000, validation_data=test_generator, callbacks=[early_stopping])
+
+# 繪製訓練曲線
+plt.plot(history.history['loss'], label='Training Loss')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
+
+
+
+
+
+#pick out some test data to try predicting
+
+# 從測試集中取得一批資料
+sample_batch, true_output_batch = test_generator[0]
+
+# 進行預測
+predictions = linear_model.predict({'input_image': sample_batch['input_image'], 'input_ref_holo': sample_batch['input_ref_holo'],'input_ref_holo2': sample_batch['input_ref_holo']})
+
+# 顯示預測結果
+for i in range(min(10, len(sample_batch['input_image']))):
+    plt.figure(figsize=(12, 4))
+
+    # 顯示輸入圖片
+    plt.subplot(1, 3, 1)
+    plt.imshow(sample_batch['input_image'][i, :, :, 0], cmap='gray')
+    plt.title('Input Image')
+
+    # 顯示 true output image
+    plt.subplot(1, 3, 2)
+    true_output_file = 'Hologram_' + test_files[i]
+    true_output_path = os.path.join(output_folder, true_output_file)
+    true_output_img = load_img(true_output_path, color_mode='grayscale', target_size=img_size[:-1])
+    plt.imshow(img_to_array(true_output_img) / 255.0, cmap='gray')
+    plt.title('True Output Image')
+
+    # 顯示模型預測的結果
+    plt.subplot(1, 3, 3)
+    plt.imshow(predictions[i, :, :, 0], cmap='gray')
+    plt.title('Model Prediction')
+
+    plt.show()
